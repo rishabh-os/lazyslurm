@@ -34,7 +34,7 @@ fn render_text_popup(popup_text: String, app: &App, frame: &mut Frame) {
     frame.render_widget(popup, popup_area);
 }
 
-pub fn render_app(frame: &mut Frame, app: &App) {
+pub fn render_app(frame: &mut Frame, app: &mut App) {
     // Create main layout
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -134,19 +134,12 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(status, area);
 }
 
-fn render_jobs_list(frame: &mut Frame, app: &App, area: Rect) {
+fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let jobs: Vec<ListItem> = app
         .job_list
         .jobs
         .iter()
-        .enumerate()
-        .map(|(i, job)| {
-            let style = if i == app.selected_job_index {
-                Style::default().bg(Color::Blue).fg(Color::White)
-            } else {
-                Style::default()
-            };
-
+        .map(|job| {
             let state_color = match job.state {
                 JobState::Running => Color::Green,
                 JobState::Pending => Color::Yellow,
@@ -166,16 +159,19 @@ fn render_jobs_list(frame: &mut Frame, app: &App, area: Rect) {
                 Span::styled(format!("{} ", job.state), Style::default().fg(state_color)),
                 Span::styled(time_used.to_string(), Style::default()),
             ]))
-            .style(style)
         })
         .collect();
 
     let title = format!("Jobs ({} total)", app.job_list.jobs.len());
     let jobs_list = List::new(jobs)
         .block(Block::default().title(title).borders(Borders::ALL))
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        .highlight_style(
+            Style::new()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        );
 
-    frame.render_widget(jobs_list, area);
+    frame.render_stateful_widget(jobs_list, area, &mut app.list_state);
 }
 
 fn render_job_details(frame: &mut Frame, app: &App, area: Rect) {

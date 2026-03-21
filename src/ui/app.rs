@@ -1,4 +1,5 @@
 use anyhow::Result;
+use ratatui::widgets::ListState;
 use std::fmt;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -53,6 +54,7 @@ pub struct App {
     pub confirm_action: bool,
     pub input: String,
     pub log_view_mode: LogViewMode,
+    pub list_state: ListState,
 }
 
 impl App {
@@ -67,7 +69,7 @@ impl App {
             current_user: std::env::var("USER").ok(),
             current_partition: None,
             last_refresh: Instant::now(),
-            refresh_interval: Duration::from_secs(2), // Refresh every 2 seconds
+            refresh_interval: Duration::from_secs(2),
             is_loading: false,
             error_message: None,
             event_sender,
@@ -75,6 +77,7 @@ impl App {
             confirm_action: false,
             input: "".to_string(),
             log_view_mode: LogViewMode::Stdout,
+            list_state: ListState::default().with_selected(Some(0)),
         }
     }
 
@@ -135,6 +138,7 @@ impl App {
         if !self.job_list.jobs.is_empty() && self.selected_job_index < self.job_list.jobs.len() - 1
         {
             self.selected_job_index += 1;
+            self.list_state.select(Some(self.selected_job_index));
             self.update_selected_job();
         }
     }
@@ -142,6 +146,7 @@ impl App {
     pub fn select_previous_job(&mut self) {
         if self.selected_job_index > 0 {
             self.selected_job_index -= 1;
+            self.list_state.select(Some(self.selected_job_index));
             self.update_selected_job();
         }
     }
