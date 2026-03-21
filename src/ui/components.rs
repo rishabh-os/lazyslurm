@@ -5,7 +5,9 @@ use ratatui::{
     style::{Color, Modifier, Style},
     symbols,
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Wrap},
+    widgets::{
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarState, Tabs, Wrap,
+    },
 };
 use std::fs;
 
@@ -142,6 +144,12 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let job_list = app.current_job_list();
 
+    let focus_style = if !app.is_log_focused() {
+        Style::default().fg(app.theme.focused)
+    } else {
+        Style::default().fg(app.theme.unfocused)
+    };
+
     let jobs: Vec<ListItem> = job_list
         .jobs
         .iter()
@@ -170,10 +178,15 @@ fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let title = format!("{} ({} total)", app.view_mode, job_list.jobs.len());
     let jobs_list = List::new(jobs)
-        .block(Block::default().title(title).borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_style(focus_style),
+        )
         .highlight_style(
             Style::new()
-                .bg(Color::DarkGray)
+                .bg(app.theme.selected_bg)
                 .add_modifier(Modifier::BOLD),
         );
 
@@ -216,21 +229,28 @@ fn render_job_details(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(details, area);
 }
 
-fn render_job_logs(frame: &mut Frame, app: &App, log_view_mode: LogViewMode, area: Rect) {
+fn render_job_logs(frame: &mut Frame, app: &mut App, log_view_mode: LogViewMode, area: Rect) {
     let selected_index = match log_view_mode {
         LogViewMode::Stdout => 0,
         LogViewMode::Stderr => 1,
     };
 
-    let block = Block::default().borders(Borders::ALL).title("Logs:");
+    let focus_style = if app.is_log_focused() {
+        Style::default().fg(app.theme.focused)
+    } else {
+        Style::default().fg(app.theme.unfocused)
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(focus_style)
+        .title("Logs:");
     frame.render_widget(block, area);
 
     let inner = area.inner(Margin::new(1, 1));
 
-    // Split the inner area: top line for tabs, rest for content
     let [tabs_area, content_area] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
         .spacing(0)
-        // ? Offset y to be in the block
         .areas(inner.offset(Offset { x: 0, y: -1 }));
 
     let tabs = Tabs::new(vec!["stdout", "stderr"])
@@ -243,23 +263,58 @@ fn render_job_logs(frame: &mut Frame, app: &App, log_view_mode: LogViewMode, are
         )
         .padding("", "")
         .divider(symbols::DOT);
-    // ? Offset x to avoid the title
     frame.render_widget(tabs, tabs_area.offset(Offset { x: 5, y: 0 }));
 
     let content = if let Some(job) = app.get_selected_job() {
-        read_log_file(job, log_view_mode)
+        let full_content = read_log_file(job, log_view_mode);
+        app.set_log_content(full_content.clone());
+        full_content
     } else {
         "Select a job to view logs".to_string()
     };
 
-    let logs = Paragraph::new(content).wrap(Wrap { trim: true });
+    let lines: Vec<&str> = content.lines().collect();
+    let total_lines = lines.len();
+    let visible_height = content_area.height as usize;
+    let max_scroll = total_lines.saturating_sub(visible_height);
+
+    let scroll_offset = app.log_scroll_offset.min(max_scroll);
+
+    let visible_lines: Vec<Line> = lines
+        .iter()
+        .skip(scroll_offset)
+        .take(visible_height)
+        .map(|s| Line::from(*s))
+        .collect();
+
+    let scrollbar_state = ScrollbarState::new(max_scroll + 1).position(scroll_offset);
+
+    let logs = Paragraph::new(visible_lines).wrap(Wrap { trim: false });
     frame.render_widget(logs, content_area);
+
+    if total_lines > visible_height {
+        let scrollbar = Scrollbar::new(ratatui::widgets::ScrollbarOrientation::VerticalRight)
+            .style(Style::default().fg(Color::Gray));
+        frame.render_stateful_widget(scrollbar, content_area, &mut scrollbar_state.clone());
+
+        let scroll_info = format!("{}/{}", scroll_offset, max_scroll);
+        let scroll_text = Paragraph::new(scroll_info)
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Right);
+        let scroll_area = Rect::new(
+            content_area.x + content_area.width - 6,
+            content_area.y,
+            6,
+            1,
+        );
+        frame.render_widget(scroll_text, scroll_area);
+    }
 }
 
 fn render_help_bar(app_state: AppState, frame: &mut Frame, area: Rect) {
     let help_text = match app_state {
         AppState::Normal => {
-            "q: quit | ↑↓: navigate | r: refresh | h: history | c: cancel | l: toggle logs | p: partition | u: user"
+            "q: quit | tab: focus | ↑↓: nav/scroll | r: refresh | h: history | c: cancel | l: toggle logs"
         }
         AppState::CancelJobPopup => "y: confirm | n: reject | esc: reject",
         AppState::PartitionSearchPopup => "esc: close | Enter: submit",

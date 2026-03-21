@@ -1,11 +1,34 @@
 use anyhow::Result;
-use ratatui::widgets::ListState;
+use ratatui::{style::Color, widgets::ListState};
 use std::fmt;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
+#[derive(Debug, Clone)]
+pub struct Theme {
+    pub focused: Color,
+    pub unfocused: Color,
+    pub selected_bg: Color,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            focused: Color::Magenta,
+            unfocused: Color::White,
+            selected_bg: Color::DarkGray,
+        }
+    }
+}
+
 use crate::models::{Job, JobList};
 use crate::slurm::{SlurmCommands, SlurmParser};
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FocusedPanel {
+    JobList,
+    LogView,
+}
 
 #[derive(Debug, Clone)]
 pub enum AppEvent {
@@ -74,6 +97,11 @@ pub struct App {
     pub input: String,
     pub log_view_mode: LogViewMode,
     pub list_state: ListState,
+    pub focused_panel: FocusedPanel,
+    pub log_scroll_offset: usize,
+    pub log_content_stdout: String,
+    pub log_content_stderr: String,
+    pub theme: Theme,
 }
 
 impl App {
@@ -101,6 +129,11 @@ impl App {
             input: "".to_string(),
             log_view_mode: LogViewMode::Stdout,
             list_state: ListState::default().with_selected(Some(0)),
+            focused_panel: FocusedPanel::JobList,
+            log_scroll_offset: 0,
+            log_content_stdout: String::new(),
+            log_content_stderr: String::new(),
+            theme: Theme::default(),
         }
     }
 
@@ -235,6 +268,9 @@ impl App {
     fn update_selected_job(&mut self) {
         let job_list = self.current_job_list();
         self.selected_job = job_list.jobs.get(self.selected_job_index).cloned();
+        self.reset_log_scroll();
+        self.log_content_stdout.clear();
+        self.log_content_stderr.clear();
     }
 
     pub fn get_selected_job(&self) -> Option<&Job> {
@@ -286,6 +322,7 @@ impl App {
             LogViewMode::Stdout => LogViewMode::Stderr,
             LogViewMode::Stderr => LogViewMode::Stdout,
         };
+        self.reset_log_scroll();
     }
 
     pub fn log_view_mode_title(&self) -> &'static str {
@@ -293,6 +330,63 @@ impl App {
             LogViewMode::Stdout => "stdout",
             LogViewMode::Stderr => "stderr",
         }
+    }
+
+    pub fn toggle_focus(&mut self) {
+        self.focused_panel = match self.focused_panel {
+            FocusedPanel::JobList => FocusedPanel::LogView,
+            FocusedPanel::LogView => FocusedPanel::JobList,
+        };
+    }
+
+    pub fn reset_log_scroll(&mut self) {
+        self.log_scroll_offset = 0;
+    }
+
+    pub fn scroll_log_up(&mut self) {
+        if self.log_scroll_offset > 0 {
+            self.log_scroll_offset -= 1;
+        }
+    }
+
+    pub fn scroll_log_down(&mut self, max_offset: usize) {
+        if self.log_scroll_offset < max_offset {
+            self.log_scroll_offset += 1;
+        }
+    }
+
+    pub fn scroll_log_page_up(&mut self) {
+        self.log_scroll_offset = self.log_scroll_offset.saturating_sub(10);
+    }
+
+    pub fn scroll_log_page_down(&mut self, max_offset: usize) {
+        self.log_scroll_offset = (self.log_scroll_offset + 10).min(max_offset);
+    }
+
+    pub fn scroll_log_to_start(&mut self) {
+        self.log_scroll_offset = 0;
+    }
+
+    pub fn scroll_log_to_end(&mut self, max_offset: usize) {
+        self.log_scroll_offset = max_offset;
+    }
+
+    pub fn current_log_content(&self) -> &str {
+        match self.log_view_mode {
+            LogViewMode::Stdout => &self.log_content_stdout,
+            LogViewMode::Stderr => &self.log_content_stderr,
+        }
+    }
+
+    pub fn set_log_content(&mut self, content: String) {
+        match self.log_view_mode {
+            LogViewMode::Stdout => self.log_content_stdout = content,
+            LogViewMode::Stderr => self.log_content_stderr = content,
+        }
+    }
+
+    pub fn is_log_focused(&self) -> bool {
+        self.focused_panel == FocusedPanel::LogView
     }
 }
 

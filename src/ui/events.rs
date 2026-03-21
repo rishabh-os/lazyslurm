@@ -58,11 +58,37 @@ async fn event_normal_state(app: &mut App, key: KeyEvent) -> Result<Option<()>, 
         (KeyCode::Char('r'), _) => {
             app.refresh().await?;
         }
+        (KeyCode::Tab, _) => {
+            app.toggle_focus();
+        }
         (KeyCode::Up, _) => {
-            app.select_previous_job();
+            if app.is_log_focused() {
+                app.scroll_log_up();
+            } else {
+                app.select_previous_job();
+            }
         }
         (KeyCode::Down, _) => {
-            app.select_next_job();
+            if app.is_log_focused() {
+                let max_offset = app.current_log_content().lines().count().saturating_sub(1);
+                app.scroll_log_down(max_offset);
+            } else {
+                app.select_next_job();
+            }
+        }
+        (KeyCode::PageUp, _) => {
+            app.scroll_log_page_up();
+        }
+        (KeyCode::PageDown, _) => {
+            let max_offset = app.current_log_content().lines().count().saturating_sub(1);
+            app.scroll_log_page_down(max_offset);
+        }
+        (KeyCode::Home, _) => {
+            app.scroll_log_to_start();
+        }
+        (KeyCode::End, _) => {
+            let max_offset = app.current_log_content().lines().count().saturating_sub(1);
+            app.scroll_log_to_end(max_offset);
         }
         (KeyCode::Char('u'), _) => {
             app.state = AppState::UserSearchPopup;
