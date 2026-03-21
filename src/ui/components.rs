@@ -6,7 +6,8 @@ use ratatui::{
     symbols,
     text::{Line, Span, Text},
     widgets::{
-        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarState, Tabs, Wrap,
+        Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarState,
+        Tabs, Wrap,
     },
 };
 use std::fs;
@@ -27,6 +28,7 @@ fn render_text_popup(popup_text: String, app: &App, frame: &mut Frame) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .title(popup_text)
                 .style(Style::default().fg(Color::Yellow)),
         )
@@ -43,7 +45,7 @@ pub fn render_app(frame: &mut Frame, app: &mut App) {
         .constraints([
             Constraint::Length(1), // Status bar
             Constraint::Min(0),    // Main content
-            Constraint::Length(3), // Help/actions bar
+            Constraint::Length(1), // Help/actions bar
         ])
         .split(frame.area());
 
@@ -94,6 +96,7 @@ pub fn render_app(frame: &mut Frame, app: &mut App) {
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
+                        .border_type(BorderType::Rounded)
                         .title("Confirm")
                         .style(Style::default().fg(Color::Yellow)),
                 )
@@ -152,6 +155,7 @@ fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(focus_style)
         .title("Jobs:");
     frame.render_widget(block, area);
@@ -225,7 +229,12 @@ fn render_job_details(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let details = Paragraph::new(text)
-        .block(Block::default().title("Job Details").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title("Job Details")
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded),
+        )
         .wrap(Wrap { trim });
 
     frame.render_widget(details, area);
@@ -245,6 +254,7 @@ fn render_job_logs(frame: &mut Frame, app: &mut App, log_view_mode: LogViewMode,
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(focus_style)
         .title("Logs:");
     frame.render_widget(block, area);
@@ -323,8 +333,8 @@ fn render_help_bar(app_state: AppState, frame: &mut Frame, area: Rect) {
         AppState::UserSearchPopup => "esc: close | Enter: submit",
     };
     let help = Paragraph::new(help_text)
-        .block(Block::default().borders(Borders::ALL))
-        .style(Style::default().fg(Color::Gray));
+        .block(Block::default())
+        .style(Style::default().fg(Color::Blue));
 
     frame.render_widget(help, area);
 }
