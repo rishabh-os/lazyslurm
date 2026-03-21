@@ -43,14 +43,10 @@ pub fn render_app(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // Status bar
             Constraint::Min(0),    // Main content
             Constraint::Length(1), // Help/actions bar
         ])
         .split(frame.area());
-
-    // Render status bar
-    render_status_bar(frame, app, chunks[0]);
 
     // Main content area - split horizontally
     let main_chunks = Layout::default()
@@ -59,7 +55,7 @@ pub fn render_app(frame: &mut Frame, app: &mut App) {
             Constraint::Percentage(40), // Jobs list
             Constraint::Percentage(60), // Details/logs
         ])
-        .split(chunks[1]);
+        .split(chunks[0]);
 
     // Render jobs list
     render_jobs_list(frame, app, main_chunks[0]);
@@ -78,7 +74,7 @@ pub fn render_app(frame: &mut Frame, app: &mut App) {
     render_job_logs(frame, app, app.log_view_mode, right_chunks[1]);
 
     // Render help bar
-    render_help_bar(app.state, frame, chunks[2]);
+    render_help_bar(app.state, frame, chunks[1]);
 
     match app.state {
         AppState::UserSearchPopup => render_text_popup("Search User:".to_string(), app, frame),
@@ -107,41 +103,6 @@ pub fn render_app(frame: &mut Frame, app: &mut App) {
         }
         _ => {}
     }
-}
-
-fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let view_mode_label = match app.view_mode {
-        ViewMode::ActiveJobs => "Active",
-        ViewMode::HistoryJobs => "History",
-    };
-
-    let mut status_text = format!("LazySlurm [{}]", view_mode_label);
-
-    if let Some(user) = &app.current_user {
-        status_text.push_str(&format!(" - User: {}", user));
-    }
-
-    if let Some(part) = &app.current_partition {
-        status_text.push_str(&format!(" - Part: {}", part));
-    }
-
-    status_text.push_str(&format!(" - Jobs: {}", app.current_job_list().jobs.len()));
-
-    if app.is_loading {
-        status_text.push_str(" - Loading...");
-    }
-
-    if let Some(error) = &app.error_message {
-        status_text = format!("ERROR: {}", error);
-    }
-
-    let status = Paragraph::new(status_text).style(if app.error_message.is_some() {
-        Style::default().fg(Color::Red)
-    } else {
-        Style::default()
-    });
-
-    frame.render_widget(status, area);
 }
 
 fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -207,14 +168,11 @@ fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let title = format!("{} total", job_list.jobs.len());
-    let jobs_list = List::new(jobs)
-        .block(Block::default().title(title))
-        .highlight_style(
-            Style::new()
-                .bg(app.theme.selected_bg)
-                .add_modifier(Modifier::BOLD),
-        );
+    let jobs_list = List::new(jobs).block(Block::default()).highlight_style(
+        Style::new()
+            .bg(app.theme.selected_bg)
+            .add_modifier(Modifier::BOLD),
+    );
 
     frame.render_stateful_widget(jobs_list, list_area, &mut app.list_state);
 }
