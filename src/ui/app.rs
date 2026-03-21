@@ -1,5 +1,5 @@
 use anyhow::Result;
-use ratatui::{style::Color, widgets::ListState};
+use ratatui::{layout::Rect, style::Color, widgets::ListState};
 use std::fmt;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -99,6 +99,7 @@ pub struct App {
     pub list_state: ListState,
     pub focused_panel: FocusedPanel,
     pub log_scroll_offset: usize,
+    pub logs_area: Option<Rect>,
     pub log_content_stdout: String,
     pub log_content_stderr: String,
     pub theme: Theme,
@@ -131,6 +132,7 @@ impl App {
             list_state: ListState::default().with_selected(Some(0)),
             focused_panel: FocusedPanel::JobList,
             log_scroll_offset: 0,
+            logs_area: None,
             log_content_stdout: String::new(),
             log_content_stderr: String::new(),
             theme: Theme::default(),
@@ -387,6 +389,17 @@ impl App {
 
     pub fn is_log_focused(&self) -> bool {
         self.focused_panel == FocusedPanel::LogView
+    }
+
+    pub fn is_mouse_in_logs_area(&self, row: u16, col: u16) -> bool {
+        if let Some(area) = self.logs_area {
+            row >= area.y
+                && row < area.y + area.height
+                && col >= area.x
+                && col < area.x + area.width
+        } else {
+            false
+        }
     }
 }
 

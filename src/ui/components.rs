@@ -199,6 +199,8 @@ fn render_job_details(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_job_logs(frame: &mut Frame, app: &mut App, log_view_mode: LogViewMode, area: Rect) {
+    app.logs_area = Some(area);
+
     let selected_index = match log_view_mode {
         LogViewMode::Stdout => 0,
         LogViewMode::Stderr => 1,

@@ -1,6 +1,8 @@
 use crate::app::{App, AppState};
 use crate::render_app;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use ratatui::crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind,
+};
 use ratatui::{Terminal, backend::CrosstermBackend};
 use std::{
     error::Error,
@@ -39,6 +41,23 @@ pub async fn handle_text_event(app: &mut App, key: KeyEvent) -> Option<Option<St
         _ => {}
     }
     None
+}
+
+pub fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
+    if !app.is_mouse_in_logs_area(mouse.row, mouse.column) {
+        return;
+    }
+
+    match mouse.kind {
+        MouseEventKind::ScrollUp => {
+            app.scroll_log_up();
+        }
+        MouseEventKind::ScrollDown => {
+            let max_offset = app.current_log_content().lines().count().saturating_sub(1);
+            app.scroll_log_down(max_offset);
+        }
+        _ => {}
+    }
 }
 
 pub async fn reset_popup_state_to_normal(app: &mut App) -> Result<(), Box<dyn Error>> {
@@ -167,11 +186,16 @@ pub async fn run_event_loop(
             .checked_sub(last_tick.elapsed())
             .unwrap_or(Duration::from_secs(0));
 
-        if event::poll(timeout)?
-            && let Event::Key(key) = event::read()?
-            && let Ok(Some(())) = handle_key_event(app, key).await
-        {
-            return Ok(());
+        if event::poll(timeout)? {
+            match event::read()? {
+                Event::Key(key) => {
+                    if let Ok(Some(())) = handle_key_event(app, key).await {
+                        return Ok(());
+                    }
+                }
+                Event::Mouse(mouse) => handle_mouse_event(app, mouse),
+                _ => {}
+            }
         }
 
         if app.should_refresh() {
