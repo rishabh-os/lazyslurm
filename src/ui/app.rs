@@ -1,5 +1,6 @@
 use anyhow::Result;
 use ratatui::{layout::Rect, style::Color, widgets::ListState};
+use std::collections::HashMap;
 use std::fmt;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -98,7 +99,8 @@ pub struct App {
     pub log_view_mode: LogViewMode,
     pub list_state: ListState,
     pub focused_panel: FocusedPanel,
-    pub log_scroll_offset: usize,
+    pub stdout_scroll_offsets: HashMap<String, usize>,
+    pub stderr_scroll_offsets: HashMap<String, usize>,
     pub logs_area: Option<Rect>,
     pub log_content_stdout: String,
     pub log_content_stderr: String,
@@ -131,7 +133,8 @@ impl App {
             log_view_mode: LogViewMode::Stdout,
             list_state: ListState::default().with_selected(Some(0)),
             focused_panel: FocusedPanel::JobList,
-            log_scroll_offset: 0,
+            stdout_scroll_offsets: HashMap::new(),
+            stderr_scroll_offsets: HashMap::new(),
             logs_area: None,
             log_content_stdout: String::new(),
             log_content_stderr: String::new(),
@@ -270,7 +273,6 @@ impl App {
     fn update_selected_job(&mut self) {
         let job_list = self.current_job_list();
         self.selected_job = job_list.jobs.get(self.selected_job_index).cloned();
-        self.reset_log_scroll();
         self.log_content_stdout.clear();
         self.log_content_stderr.clear();
     }
@@ -324,7 +326,6 @@ impl App {
             LogViewMode::Stdout => LogViewMode::Stderr,
             LogViewMode::Stderr => LogViewMode::Stdout,
         };
-        self.reset_log_scroll();
     }
 
     pub fn log_view_mode_title(&self) -> &'static str {
@@ -341,36 +342,62 @@ impl App {
         };
     }
 
-    pub fn reset_log_scroll(&mut self) {
-        self.log_scroll_offset = 0;
+    fn get_scroll_offsets(&mut self) -> &mut HashMap<String, usize> {
+        match self.log_view_mode {
+            LogViewMode::Stdout => &mut self.stdout_scroll_offsets,
+            LogViewMode::Stderr => &mut self.stderr_scroll_offsets,
+        }
+    }
+
+    fn current_job_id(&self) -> String {
+        self.selected_job
+            .as_ref()
+            .map(|j| j.display_id())
+            .unwrap_or_default()
+    }
+
+    pub fn get_log_scroll_offset(&mut self) -> usize {
+        let job_id = self.current_job_id();
+        *self.get_scroll_offsets().get(&job_id).unwrap_or(&0)
+    }
+
+    fn set_log_scroll_offset(&mut self, offset: usize) {
+        let job_id = self.current_job_id();
+        if !job_id.is_empty() {
+            self.get_scroll_offsets().insert(job_id, offset);
+        }
     }
 
     pub fn scroll_log_up(&mut self) {
-        if self.log_scroll_offset > 0 {
-            self.log_scroll_offset -= 1;
+        let current = self.get_log_scroll_offset();
+        if current > 0 {
+            self.set_log_scroll_offset(current - 1);
         }
     }
 
     pub fn scroll_log_down(&mut self, max_offset: usize) {
-        if self.log_scroll_offset < max_offset {
-            self.log_scroll_offset += 1;
+        let current = self.get_log_scroll_offset();
+        if current < max_offset {
+            self.set_log_scroll_offset(current + 1);
         }
     }
 
     pub fn scroll_log_page_up(&mut self) {
-        self.log_scroll_offset = self.log_scroll_offset.saturating_sub(10);
+        let current = self.get_log_scroll_offset();
+        self.set_log_scroll_offset(current.saturating_sub(10));
     }
 
     pub fn scroll_log_page_down(&mut self, max_offset: usize) {
-        self.log_scroll_offset = (self.log_scroll_offset + 10).min(max_offset);
+        let current = self.get_log_scroll_offset();
+        self.set_log_scroll_offset((current + 10).min(max_offset));
     }
 
     pub fn scroll_log_to_start(&mut self) {
-        self.log_scroll_offset = 0;
+        self.set_log_scroll_offset(0);
     }
 
     pub fn scroll_log_to_end(&mut self, max_offset: usize) {
-        self.log_scroll_offset = max_offset;
+        self.set_log_scroll_offset(max_offset);
     }
 
     pub fn current_log_content(&self) -> &str {

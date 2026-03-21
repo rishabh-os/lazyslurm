@@ -250,7 +250,7 @@ fn render_job_logs(frame: &mut Frame, app: &mut App, log_view_mode: LogViewMode,
     let visible_height = content_area.height as usize;
     let max_scroll = total_lines.saturating_sub(visible_height);
 
-    let scroll_offset = app.log_scroll_offset.min(max_scroll);
+    let scroll_offset = app.get_log_scroll_offset().min(max_scroll);
 
     let visible_lines: Vec<Line> = lines
         .iter()
