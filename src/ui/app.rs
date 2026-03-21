@@ -37,9 +37,25 @@ impl fmt::Display for LogViewMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ViewMode {
+    ActiveJobs,
+    HistoryJobs,
+}
+
+impl fmt::Display for ViewMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ViewMode::ActiveJobs => write!(f, "Active Jobs"),
+            ViewMode::HistoryJobs => write!(f, "History"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct App {
     pub job_list: JobList,
+    pub history_list: JobList,
     pub state: AppState,
     pub selected_job_index: usize,
     pub selected_job: Option<Job>,
@@ -47,6 +63,9 @@ pub struct App {
     pub current_partition: Option<String>,
     pub last_refresh: Instant,
     pub refresh_interval: Duration,
+    pub last_history_refresh: Instant,
+    pub history_refresh_interval: Duration,
+    pub view_mode: ViewMode,
     pub is_loading: bool,
     pub error_message: Option<String>,
     pub event_sender: mpsc::UnboundedSender<AppEvent>,
@@ -63,6 +82,7 @@ impl App {
 
         Self {
             job_list: JobList::new(),
+            history_list: JobList::new(),
             state: AppState::Normal,
             selected_job_index: 0,
             selected_job: None,
@@ -70,6 +90,9 @@ impl App {
             current_partition: None,
             last_refresh: Instant::now(),
             refresh_interval: Duration::from_secs(2),
+            last_history_refresh: Instant::now(),
+            history_refresh_interval: Duration::from_secs(30),
+            view_mode: ViewMode::ActiveJobs,
             is_loading: false,
             error_message: None,
             event_sender,
@@ -131,12 +154,70 @@ impl App {
     }
 
     pub fn should_refresh(&self) -> bool {
-        self.last_refresh.elapsed() >= self.refresh_interval
+        match self.view_mode {
+            ViewMode::ActiveJobs => self.last_refresh.elapsed() >= self.refresh_interval,
+            ViewMode::HistoryJobs => {
+                self.last_history_refresh.elapsed() >= self.history_refresh_interval
+            }
+        }
+    }
+
+    pub async fn refresh(&mut self) -> Result<()> {
+        match self.view_mode {
+            ViewMode::ActiveJobs => self.refresh_jobs().await,
+            ViewMode::HistoryJobs => self.refresh_history().await,
+        }
+    }
+
+    pub async fn refresh_history(&mut self) -> Result<()> {
+        self.is_loading = true;
+        self.error_message = None;
+
+        match self.fetch_history().await {
+            Ok(jobs) => {
+                self.history_list.update(jobs);
+                self.update_selected_job();
+                self.last_history_refresh = Instant::now();
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to fetch history: {}", e));
+            }
+        }
+
+        self.is_loading = false;
+        Ok(())
+    }
+
+    async fn fetch_history(&self) -> Result<Vec<Job>> {
+        let sacct_output = SlurmCommands::sacct(
+            self.current_user.as_deref(),
+            self.current_partition.as_deref(),
+        )
+        .await?;
+        let jobs = SlurmParser::parse_sacct_output(&sacct_output)?;
+        Ok(jobs)
+    }
+
+    pub fn toggle_view_mode(&mut self) {
+        self.view_mode = match self.view_mode {
+            ViewMode::ActiveJobs => ViewMode::HistoryJobs,
+            ViewMode::HistoryJobs => ViewMode::ActiveJobs,
+        };
+        self.selected_job_index = 0;
+        self.list_state.select(Some(0));
+        self.update_selected_job();
+    }
+
+    pub fn current_job_list(&self) -> &JobList {
+        match self.view_mode {
+            ViewMode::ActiveJobs => &self.job_list,
+            ViewMode::HistoryJobs => &self.history_list,
+        }
     }
 
     pub fn select_next_job(&mut self) {
-        if !self.job_list.jobs.is_empty() && self.selected_job_index < self.job_list.jobs.len() - 1
-        {
+        let job_list = self.current_job_list();
+        if !job_list.jobs.is_empty() && self.selected_job_index < job_list.jobs.len() - 1 {
             self.selected_job_index += 1;
             self.list_state.select(Some(self.selected_job_index));
             self.update_selected_job();
@@ -152,7 +233,8 @@ impl App {
     }
 
     fn update_selected_job(&mut self) {
-        self.selected_job = self.job_list.jobs.get(self.selected_job_index).cloned();
+        let job_list = self.current_job_list();
+        self.selected_job = job_list.jobs.get(self.selected_job_index).cloned();
     }
 
     pub fn get_selected_job(&self) -> Option<&Job> {

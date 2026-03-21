@@ -34,10 +34,11 @@ use lazyslurm::ui::{App, events};
   q: quit
   ↑/↓ or j/k: navigate jobs
   r: refresh jobs
+  h: toggle history view
   c: cancel selected job
 
 Notes:
-  - SLURM tools required for normal operation: squeue, scontrol, scancel.
+  - SLURM tools required for normal operation: squeue, scontrol, scancel, sacct.
 "#
 )]
 struct Cli {
@@ -101,8 +102,8 @@ async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
 ) -> Result<(), Box<dyn Error>> {
-    // Initial refresh
     app.refresh_jobs().await?;
+    app.refresh_history().await?;
 
     events::run_event_loop(app, terminal).await?;
 

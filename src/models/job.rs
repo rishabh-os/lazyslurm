@@ -47,6 +47,29 @@ impl From<&str> for JobState {
     }
 }
 
+impl JobState {
+    pub fn from_sacct_state(s: &str) -> Self {
+        match s.to_uppercase().as_str() {
+            "PENDING" | "PD" => JobState::Pending,
+            "RUNNING" | "R" | "RESIZING" => JobState::Running,
+            "COMPLETED" | "CD" => JobState::Completed,
+            "CANCELLED" | "CA" => JobState::Cancelled,
+            "FAILED" | "F" => JobState::Failed,
+            "TIMEOUT" | "TO" => JobState::Timeout,
+            "NODE_FAIL" | "NF" => JobState::NodeFail,
+            "PREEMPTED" | "PR" | "REVOKED" => JobState::Preempted,
+            "BOOT_FAIL" | "BF" => JobState::Failed,
+            "DEADLINE" | "DL" => JobState::Failed,
+            "OUT_OF_MEMORY" | "OOM" => JobState::Failed,
+            "SIGNALLED" | "SG" => JobState::Failed,
+            "SPECIAL_EXIT" | "SE" => JobState::Failed,
+            "STOPPED" | "ST" => JobState::Pending,
+            "SUSPENDED" | "SD" | "SO" => JobState::Pending,
+            _ => JobState::Unknown(s.to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
     pub job_id: String,

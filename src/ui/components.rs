@@ -12,7 +12,7 @@ use std::fs;
 use crate::slurm::SlurmParser;
 use crate::ui::App;
 use crate::{
-    AppState, LogViewMode,
+    AppState, LogViewMode, ViewMode,
     models::{Job, JobState},
 };
 
@@ -105,7 +105,12 @@ pub fn render_app(frame: &mut Frame, app: &mut App) {
 }
 
 fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let mut status_text = "LazySlurm".to_string();
+    let view_mode_label = match app.view_mode {
+        ViewMode::ActiveJobs => "Active",
+        ViewMode::HistoryJobs => "History",
+    };
+
+    let mut status_text = format!("LazySlurm [{}]", view_mode_label);
 
     if let Some(user) = &app.current_user {
         status_text.push_str(&format!(" - User: {}", user));
@@ -115,7 +120,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         status_text.push_str(&format!(" - Part: {}", part));
     }
 
-    status_text.push_str(&format!(" - Jobs: {}", app.job_list.jobs.len()));
+    status_text.push_str(&format!(" - Jobs: {}", app.current_job_list().jobs.len()));
 
     if app.is_loading {
         status_text.push_str(" - Loading...");
@@ -135,8 +140,9 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
-    let jobs: Vec<ListItem> = app
-        .job_list
+    let job_list = app.current_job_list();
+
+    let jobs: Vec<ListItem> = job_list
         .jobs
         .iter()
         .map(|job| {
@@ -162,7 +168,7 @@ fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let title = format!("Jobs ({} total)", app.job_list.jobs.len());
+    let title = format!("{} ({} total)", app.view_mode, job_list.jobs.len());
     let jobs_list = List::new(jobs)
         .block(Block::default().title(title).borders(Borders::ALL))
         .highlight_style(
@@ -175,11 +181,13 @@ fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn render_job_details(frame: &mut Frame, app: &App, area: Rect) {
+    let job_list = app.current_job_list();
+
     let details = if let Some(job) = app.get_selected_job() {
         Paragraph::new(format_job_details(job))
             .block(Block::default().title("Job Details").borders(Borders::ALL))
             .wrap(Wrap { trim: true })
-    } else if app.job_list.jobs.is_empty() {
+    } else if job_list.jobs.is_empty() {
         let lines = vec![
             Line::from(""),
             Line::from("        L A Z Y S L U R M       "),
@@ -251,7 +259,7 @@ fn render_job_logs(frame: &mut Frame, app: &App, log_view_mode: LogViewMode, are
 fn render_help_bar(app_state: AppState, frame: &mut Frame, area: Rect) {
     let help_text = match app_state {
         AppState::Normal => {
-            "q: quit | ↑↓: navigate | r: refresh | c: cancel | l: toggle logs | p: partition | u: user"
+            "q: quit | ↑↓: navigate | r: refresh | h: history | c: cancel | l: toggle logs | p: partition | u: user"
         }
         AppState::CancelJobPopup => "y: confirm | n: reject | esc: reject",
         AppState::PartitionSearchPopup => "esc: close | Enter: submit",

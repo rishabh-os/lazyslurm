@@ -208,4 +208,60 @@ impl SlurmParser {
         }
         None
     }
+
+    pub fn parse_sacct_output(output: &str) -> Result<Vec<Job>> {
+        let mut jobs = Vec::new();
+
+        for line in output.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+
+            let parts: Vec<&str> = line.split('|').collect();
+            assert!(parts.len() == 15);
+
+            let job_id = parts[0].trim();
+            if job_id.is_empty() || job_id.contains(".batch") || job_id.contains(".extern") {
+                continue;
+            }
+
+            let name = parts[1].trim().to_string();
+            let user = parts[2].trim().to_string();
+            let state = JobState::from_sacct_state(parts[3].trim());
+
+            let mut job = Job::new(job_id.to_string(), name, user, state);
+
+            if job_id.contains('_') {
+                let array_parts: Vec<&str> = job_id.split('_').collect();
+                if array_parts.len() == 2 {
+                    job.array_job_id = Some(array_parts[0].to_string());
+                    job.array_task_id = array_parts[1].parse().ok();
+                }
+            }
+
+            job.start_time = Self::parse_slurm_time(parts[4].trim());
+            job.end_time = Self::parse_slurm_time(parts[5].trim());
+            job.time_used = Some(parts[6].trim().to_string());
+
+            let exit_code = parts[7].trim();
+            if let Some(code) = exit_code.split(':').next() {
+                job.exit_code = code.parse().ok();
+            }
+
+            job.node_list = Some(parts[8].trim().to_string());
+
+            job.cpus = parts[9].trim().parse().ok();
+
+            job.memory = Some(parts[10].trim().to_string());
+
+            job.partition = parts[11].trim().to_string();
+            job.submit_time = Self::parse_slurm_time(parts[12].trim());
+            job.reason = Some(parts[13].trim().to_string());
+            let _ = parts[14]; // Trailing field from pipe delimiter
+
+            jobs.push(job);
+        }
+
+        Ok(jobs)
+    }
 }

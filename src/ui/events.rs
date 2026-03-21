@@ -56,7 +56,7 @@ async fn event_normal_state(app: &mut App, key: KeyEvent) -> Result<Option<()>, 
             return Ok(Some(()));
         }
         (KeyCode::Char('r'), _) => {
-            app.refresh_jobs().await?;
+            app.refresh().await?;
         }
         (KeyCode::Up, _) => {
             app.select_previous_job();
@@ -69,6 +69,10 @@ async fn event_normal_state(app: &mut App, key: KeyEvent) -> Result<Option<()>, 
         }
         (KeyCode::Char('p'), _) => {
             app.state = AppState::PartitionSearchPopup;
+        }
+        (KeyCode::Char('h'), _) => {
+            app.toggle_view_mode();
+            app.refresh().await?;
         }
         (KeyCode::Char('c'), _) if app.selected_job.is_some() => {
             app.confirm_action = false;
@@ -145,7 +149,7 @@ pub async fn run_event_loop(
         }
 
         if app.should_refresh() {
-            app.refresh_jobs().await?;
+            app.refresh().await?;
         }
 
         if last_tick.elapsed() >= tick_rate {

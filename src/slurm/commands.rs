@@ -60,6 +60,31 @@ impl SlurmCommands {
         Ok(())
     }
 
+    pub async fn sacct(user: Option<&str>, partition: Option<&str>) -> Result<String> {
+        let mut cmd = TokioCommand::new("sacct");
+
+        if let Some(user) = user {
+            cmd.arg("-u").arg(user);
+        }
+
+        if let Some(partition) = partition {
+            cmd.arg("--partition").arg(partition);
+        }
+
+        cmd.arg("--noheader");
+        cmd.arg("-p");
+        cmd.arg("--format=JobID,JobName,User,State,Start,End,Elapsed,ExitCode,NNodes,NCPUs,ReqMem,Partition,Submit,Reason");
+
+        let output = cmd.output().await.context("Failed to execute sacct")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("sacct failed: {}", stderr);
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
     pub fn check_slurm_available() -> bool {
         Command::new("which")
             .arg("squeue")
