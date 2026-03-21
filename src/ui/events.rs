@@ -74,6 +74,9 @@ async fn event_normal_state(app: &mut App, key: KeyEvent) -> Result<Option<()>, 
             app.confirm_action = false;
             app.state = AppState::CancelJobPopup;
         }
+        (KeyCode::Char('l'), _) => {
+            app.toggle_log_view();
+        }
         _ => {}
     }
     Ok(None)

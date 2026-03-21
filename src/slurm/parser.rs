@@ -174,4 +174,38 @@ impl SlurmParser {
 
         paths
     }
+
+    pub fn get_stdout_path(job: &Job) -> Option<String> {
+        if let Some(std_out) = &job.std_out {
+            return Some(std_out.clone());
+        }
+        if let Some(work_dir) = &job.working_dir {
+            let path = format!("{}/slurm-{}.out", work_dir, job.job_id);
+            if std::fs::metadata(&path).is_ok() {
+                return Some(path);
+            }
+        }
+        let path = format!("/tmp/slurm-{}.out", job.job_id);
+        if std::fs::metadata(&path).is_ok() {
+            return Some(path);
+        }
+        None
+    }
+
+    pub fn get_stderr_path(job: &Job) -> Option<String> {
+        if let Some(std_err) = &job.std_err {
+            return Some(std_err.clone());
+        }
+        if let Some(work_dir) = &job.working_dir {
+            let path = format!("{}/slurm-{}.err", work_dir, job.job_id);
+            if std::fs::metadata(&path).is_ok() {
+                return Some(path);
+            }
+        }
+        let path = format!("/tmp/slurm-{}.err", job.job_id);
+        if std::fs::metadata(&path).is_ok() {
+            return Some(path);
+        }
+        None
+    }
 }

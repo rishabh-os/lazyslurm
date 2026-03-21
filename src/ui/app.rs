@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::fmt;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -20,6 +21,21 @@ pub enum AppState {
     CancelJobPopup,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LogViewMode {
+    Stdout,
+    Stderr,
+}
+
+impl fmt::Display for LogViewMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogViewMode::Stdout => write!(f, "stdout"),
+            LogViewMode::Stderr => write!(f, "stderr"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct App {
     pub job_list: JobList,
@@ -36,6 +52,7 @@ pub struct App {
     pub event_receiver: mpsc::UnboundedReceiver<AppEvent>,
     pub confirm_action: bool,
     pub input: String,
+    pub log_view_mode: LogViewMode,
 }
 
 impl App {
@@ -57,6 +74,7 @@ impl App {
             event_receiver,
             confirm_action: false,
             input: "".to_string(),
+            log_view_mode: LogViewMode::Stdout,
         }
     }
 
@@ -174,6 +192,20 @@ impl App {
 
     pub async fn receive_event(&mut self) -> Option<AppEvent> {
         self.event_receiver.recv().await
+    }
+
+    pub fn toggle_log_view(&mut self) {
+        self.log_view_mode = match self.log_view_mode {
+            LogViewMode::Stdout => LogViewMode::Stderr,
+            LogViewMode::Stderr => LogViewMode::Stdout,
+        };
+    }
+
+    pub fn log_view_mode_title(&self) -> &'static str {
+        match self.log_view_mode {
+            LogViewMode::Stdout => "stdout",
+            LogViewMode::Stderr => "stderr",
+        }
     }
 }
 

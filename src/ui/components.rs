@@ -1,17 +1,18 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Margin, Offset, Rect},
     prelude::Alignment,
     style::{Color, Modifier, Style},
+    symbols,
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Wrap},
 };
 use std::fs;
 
 use crate::slurm::SlurmParser;
 use crate::ui::App;
 use crate::{
-    AppState,
+    AppState, LogViewMode,
     models::{Job, JobState},
 };
 
@@ -59,20 +60,18 @@ pub fn render_app(frame: &mut Frame, app: &App) {
     // Render jobs list
     render_jobs_list(frame, app, main_chunks[0]);
 
-    // Right side - split vertically for details, logs, and summary
+    // Right side - split vertically for details and logs
     let right_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Percentage(40), // Job details
-            Constraint::Percentage(40), // Job logs
-            Constraint::Percentage(20), // Quick info/summary
+            Constraint::Percentage(50), // Job details
+            Constraint::Percentage(50), // Job logs
         ])
         .split(main_chunks[1]);
 
-    // Render details, logs, and summary
+    // Render details and logs
     render_job_details(frame, app, right_chunks[0]);
-    render_job_logs(frame, app, right_chunks[1]);
-    render_quick_info(frame, app, right_chunks[2]);
+    render_job_logs(frame, app, app.log_view_mode, right_chunks[1]);
 
     // Render help bar
     render_help_bar(app.state, frame, chunks[2]);
@@ -213,40 +212,50 @@ fn render_job_details(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(details, area);
 }
 
-fn render_job_logs(frame: &mut Frame, app: &App, area: Rect) {
+fn render_job_logs(frame: &mut Frame, app: &App, log_view_mode: LogViewMode, area: Rect) {
+    let selected_index = match log_view_mode {
+        LogViewMode::Stdout => 0,
+        LogViewMode::Stderr => 1,
+    };
+
+    let block = Block::default().borders(Borders::ALL).title("Logs:");
+    frame.render_widget(block, area);
+
+    let inner = area.inner(Margin::new(1, 1));
+
+    // Split the inner area: top line for tabs, rest for content
+    let [tabs_area, content_area] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+        .spacing(0)
+        // ? Offset y to be in the block
+        .areas(inner.offset(Offset { x: 0, y: -1 }));
+
+    let tabs = Tabs::new(vec!["stdout", "stderr"])
+        .select(selected_index)
+        .style(Style::default().fg(Color::White))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .padding("", "")
+        .divider(symbols::DOT);
+    // ? Offset x to avoid the title
+    frame.render_widget(tabs, tabs_area.offset(Offset { x: 5, y: 0 }));
+
     let content = if let Some(job) = app.get_selected_job() {
-        read_job_logs(job)
+        read_log_file(job, log_view_mode)
     } else {
         "Select a job to view logs".to_string()
     };
 
-    let logs = Paragraph::new(content)
-        .block(Block::default().title("Job Logs").borders(Borders::ALL))
-        .wrap(Wrap { trim: true });
-
-    frame.render_widget(logs, area);
-}
-
-fn render_quick_info(frame: &mut Frame, app: &App, area: Rect) {
-    let running_count = app.running_jobs().len();
-    let pending_count = app.pending_jobs().len();
-    let completed_count = app.completed_jobs().len();
-
-    let content = format!(
-        "Running: {} | Pending: {} | Completed: {}",
-        running_count, pending_count, completed_count
-    );
-
-    let quick_info =
-        Paragraph::new(content).block(Block::default().title("Summary").borders(Borders::ALL));
-
-    frame.render_widget(quick_info, area);
+    let logs = Paragraph::new(content).wrap(Wrap { trim: true });
+    frame.render_widget(logs, content_area);
 }
 
 fn render_help_bar(app_state: AppState, frame: &mut Frame, area: Rect) {
     let help_text = match app_state {
         AppState::Normal => {
-            "q: quit | ↑↓: navigate | r: refresh | c: cancel job | p: search partition | u: search user"
+            "q: quit | ↑↓: navigate | r: refresh | c: cancel | l: toggle logs | p: partition | u: user"
         }
         AppState::CancelJobPopup => "y: confirm | n: reject | esc: reject",
         AppState::PartitionSearchPopup => "esc: close | Enter: submit",
@@ -325,35 +334,36 @@ fn format_job_details(job: &Job) -> String {
     details.join("\n")
 }
 
-fn read_job_logs(job: &Job) -> String {
-    let log_paths = SlurmParser::get_job_log_paths(job);
+fn read_log_file(job: &Job, log_view_mode: LogViewMode) -> String {
+    let path = match log_view_mode {
+        LogViewMode::Stdout => SlurmParser::get_stdout_path(job),
+        LogViewMode::Stderr => SlurmParser::get_stderr_path(job),
+    };
 
-    // Try each potential log path
-    for path in &log_paths {
-        if let Ok(content) = fs::read_to_string(path) {
-            if content.is_empty() {
-                return format!("Log file exists but is empty: {}", path);
+    if let Some(path) = path {
+        match fs::read_to_string(&path) {
+            Ok(content) => {
+                if content.is_empty() {
+                    return format!("Log file exists but is empty: {}", path);
+                }
+                let lines: Vec<&str> = content.lines().collect();
+                let start = lines.len().saturating_sub(20);
+                let tail_lines = &lines[start..];
+                format!(
+                    "Log file: {}\n{}\n{}",
+                    path,
+                    "-".repeat(50),
+                    tail_lines.join("\n")
+                )
             }
-
-            // Show last 20 lines (tail-like behavior)
-            let lines: Vec<&str> = content.lines().collect();
-            let start = lines.len().saturating_sub(20);
-            let tail_lines = &lines[start..];
-
-            return format!(
-                "Log file: {}\n{}\n{}",
-                path,
-                "-".repeat(50),
-                tail_lines.join("\n")
-            );
+            Err(_) => format!("No {} log found", log_view_mode),
         }
-    }
-
-    // No logs found
-    if log_paths.is_empty() {
-        "No log file paths available".to_string()
     } else {
-        format!("No logs found. Checked paths:\n{}", log_paths.join("\n"))
+        let log_type = match log_view_mode {
+            LogViewMode::Stdout => "stdout",
+            LogViewMode::Stderr => "stderr",
+        };
+        format!("No {} log path configured", log_type)
     }
 }
 
