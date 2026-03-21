@@ -4,7 +4,7 @@ use ratatui::{
     prelude::Alignment,
     style::{Color, Modifier, Style},
     symbols,
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{
         Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarState, Tabs, Wrap,
     },
@@ -150,6 +150,33 @@ fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
         Style::default().fg(app.theme.unfocused)
     };
 
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(focus_style)
+        .title("Jobs:");
+    frame.render_widget(block, area);
+
+    let inner = area.inner(Margin::new(1, 1));
+    let [tabs_area, list_area] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)])
+        .spacing(0)
+        .areas(inner.offset(Offset { x: 0, y: -1 }));
+
+    let selected_index = match app.view_mode {
+        ViewMode::ActiveJobs => 0,
+        ViewMode::HistoryJobs => 1,
+    };
+    let tabs = Tabs::new(vec!["Active", "History"])
+        .select(selected_index)
+        .style(Style::default().fg(Color::White))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .padding("", "")
+        .divider(symbols::DOT);
+    frame.render_widget(tabs, tabs_area.offset(Offset { x: 5, y: 0 }));
+
     let jobs: Vec<ListItem> = job_list
         .jobs
         .iter()
@@ -176,55 +203,30 @@ fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let title = format!("{} ({} total)", app.view_mode, job_list.jobs.len());
+    let title = format!("{} total", job_list.jobs.len());
     let jobs_list = List::new(jobs)
-        .block(
-            Block::default()
-                .title(title)
-                .borders(Borders::ALL)
-                .border_style(focus_style),
-        )
+        .block(Block::default().title(title))
         .highlight_style(
             Style::new()
                 .bg(app.theme.selected_bg)
                 .add_modifier(Modifier::BOLD),
         );
 
-    frame.render_stateful_widget(jobs_list, area, &mut app.list_state);
+    frame.render_stateful_widget(jobs_list, list_area, &mut app.list_state);
 }
 
 fn render_job_details(frame: &mut Frame, app: &App, area: Rect) {
     let job_list = app.current_job_list();
 
-    let details = if let Some(job) = app.get_selected_job() {
-        Paragraph::new(format_job_details(job))
-            .block(Block::default().title("Job Details").borders(Borders::ALL))
-            .wrap(Wrap { trim: true })
-    } else if job_list.jobs.is_empty() {
-        let lines = vec![
-            Line::from(""),
-            Line::from("        L A Z Y S L U R M       "),
-            Line::from("    Tom Hill 2025 - tom@hill.xyz"),
-            Line::from(""),
-            Line::from(""),
-            Line::from("No jobs found!"),
-            Line::from(""),
-            Line::from("Try running: lazyslurm --user <username>"),
-            Line::from("or check if SLURM is available."),
-            Line::from(""),
-            Line::from(Span::styled(
-                "\"We do not remember days; we remember moments.\" - Cesare Pavese",
-                Style::default().add_modifier(Modifier::ITALIC),
-            )),
-        ];
-        Paragraph::new(lines)
-            .block(Block::default().title("Job Details").borders(Borders::ALL))
-            .wrap(Wrap { trim: false })
-    } else {
-        Paragraph::new("Select a job to view details")
-            .block(Block::default().title("Job Details").borders(Borders::ALL))
-            .wrap(Wrap { trim: true })
+    let (text, trim) = match app.get_selected_job() {
+        Some(job) => (Text::from(format_job_details(job)), true),
+        None if job_list.jobs.is_empty() => (Text::raw("No jobs found"), false),
+        None => (Text::raw("Select a job to view details"), true),
     };
+
+    let details = Paragraph::new(text)
+        .block(Block::default().title("Job Details").borders(Borders::ALL))
+        .wrap(Wrap { trim });
 
     frame.render_widget(details, area);
 }
