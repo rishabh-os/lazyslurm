@@ -8,7 +8,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use std::{error::Error, io};
 
 use lazyslurm::slurm::SlurmCommands;
-use lazyslurm::ui::{App, events};
+use lazyslurm::ui::{App, events, help};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -30,16 +30,7 @@ use lazyslurm::ui::{App, events};
                                                                                         
 
 "#,
-    after_help = r#"Keyboard shortcuts:
-  q: quit
-  ↑/↓ or j/k: navigate jobs
-  r: refresh jobs
-  h: toggle history view
-  c: cancel selected job
-
-Notes:
-  - SLURM tools required for normal operation: squeue, scontrol, scancel, sacct.
-"#
+    after_help = help::CLI_AFTER_HELP
 )]
 struct Cli {
     #[arg(

@@ -13,14 +13,16 @@ use ratatui::{
 use std::fs;
 
 use crate::slurm::SlurmParser;
-use crate::ui::App;
+use crate::ui::{App, help};
 use crate::{
     AppState, LogViewMode, ViewMode,
     models::{Job, JobState},
 };
 
 fn render_text_popup(popup_text: String, app: &App, frame: &mut Frame) {
-    let popup_area = centered_rect(30, 9, frame.area());
+    let popup_area = frame
+        .area()
+        .centered(Constraint::Length(40), Constraint::Length(3));
     frame.render_widget(Clear, popup_area);
 
     let popup = Paragraph::new(app.input.as_str())
@@ -74,7 +76,7 @@ pub fn render_app(frame: &mut Frame, app: &mut App) {
     render_job_logs(frame, app, app.log_view_mode, right_chunks[1]);
 
     // Render help bar
-    render_help_bar(app.state, frame, chunks[1]);
+    render_help_bar(app.state, app.view_mode, frame, chunks[1]);
 
     match app.state {
         AppState::UserSearchPopup => render_text_popup("Search User:".to_string(), app, frame),
@@ -82,7 +84,9 @@ pub fn render_app(frame: &mut Frame, app: &mut App) {
             render_text_popup("Search Partition:".to_string(), app, frame)
         }
         AppState::CancelJobPopup => {
-            let popup_area = centered_rect(30, 7, frame.area());
+            let popup_area = frame
+                .area()
+                .centered(Constraint::Length(40), Constraint::Length(3));
 
             frame.render_widget(Clear, popup_area);
             let selected_job_id = app.selected_job.clone().unwrap().job_id;
@@ -283,15 +287,8 @@ fn render_job_logs(frame: &mut Frame, app: &mut App, log_view_mode: LogViewMode,
     }
 }
 
-fn render_help_bar(app_state: AppState, frame: &mut Frame, area: Rect) {
-    let help_text = match app_state {
-        AppState::Normal => {
-            "q: quit | tab: focus | ↑↓: nav/scroll | r: refresh | h: history | c: cancel | l: toggle logs"
-        }
-        AppState::CancelJobPopup => "y: confirm | n: reject | esc: reject",
-        AppState::PartitionSearchPopup => "esc: close | Enter: submit",
-        AppState::UserSearchPopup => "esc: close | Enter: submit",
-    };
+fn render_help_bar(app_state: AppState, view_mode: ViewMode, frame: &mut Frame, area: Rect) {
+    let help_text = help::get_help_text(app_state, view_mode);
     let help = Paragraph::new(help_text)
         .block(Block::default())
         .style(Style::default().fg(Color::Blue));
@@ -404,24 +401,4 @@ fn truncate(s: &str, max_len: usize) -> String {
     } else {
         format!("{}...", &s[..max_len.saturating_sub(3)])
     }
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }

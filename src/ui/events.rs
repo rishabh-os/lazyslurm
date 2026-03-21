@@ -1,4 +1,4 @@
-use crate::app::{App, AppState};
+use crate::app::{App, AppState, ViewMode};
 use crate::render_app;
 use ratatui::crossterm::event::{
     self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind,
@@ -119,7 +119,9 @@ async fn event_normal_state(app: &mut App, key: KeyEvent) -> Result<Option<()>, 
             app.toggle_view_mode();
             app.refresh().await?;
         }
-        (KeyCode::Char('c'), _) if app.selected_job.is_some() => {
+        (KeyCode::Char('c'), _)
+            if app.selected_job.is_some() && app.view_mode == ViewMode::ActiveJobs =>
+        {
             app.confirm_action = false;
             app.state = AppState::CancelJobPopup;
         }
