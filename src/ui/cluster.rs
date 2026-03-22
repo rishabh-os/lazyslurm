@@ -7,8 +7,11 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, List, ListItem, Paragraph},
 };
 
-use crate::models::{Partition, PartitionList, PartitionState};
-use crate::ui::Theme;
+use crate::ui::App;
+use crate::{
+    FocusedPanel,
+    models::{Partition, PartitionList, PartitionState},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClusterPanel {
@@ -16,59 +19,27 @@ pub enum ClusterPanel {
     PartitionDetails,
 }
 
-pub fn render_cluster_view(
-    frame: &mut Frame,
-    partition_list: &PartitionList,
-    user_limits: &crate::models::UserLimits,
-    selected_partition_index: usize,
-    focused_panel: ClusterPanel,
-    theme: &Theme,
-    area: Rect,
-) {
+pub fn render_cluster_view(frame: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(area);
 
-    render_partition_list(
-        frame,
-        partition_list,
-        selected_partition_index,
-        focused_panel == ClusterPanel::PartitionList,
-        theme,
-        chunks[0],
-    );
+    render_partition_list(app, frame, chunks[0]);
 
     let right_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
-        .spacing(1)
         .split(chunks[1]);
 
-    render_partition_details(
-        frame,
-        partition_list,
-        selected_partition_index,
-        focused_panel == ClusterPanel::PartitionDetails,
-        theme,
-        right_chunks[0],
-    );
-
-    render_user_limits(frame, user_limits, right_chunks[1]);
+    render_partition_details(frame, app, right_chunks[0]);
 }
 
-fn render_partition_list(
-    frame: &mut Frame,
-    partition_list: &PartitionList,
-    selected_index: usize,
-    is_focused: bool,
-    theme: &Theme,
-    area: Rect,
-) {
-    let focus_style = if is_focused {
-        Style::default().fg(theme.focused)
+fn render_partition_list(app: &mut App, frame: &mut Frame, area: Rect) {
+    let focus_style = if app.focused_panel == FocusedPanel::ClusterInfo {
+        Style::default().fg(app.theme.focused)
     } else {
-        Style::default().fg(theme.unfocused)
+        Style::default().fg(app.theme.unfocused)
     };
 
     let block = Block::default()
@@ -80,17 +51,17 @@ fn render_partition_list(
 
     let inner = area.inner(Margin::new(1, 1));
 
-    if partition_list.partitions.is_empty() {
+    if app.partition_list.partitions.is_empty() {
         let empty = Paragraph::new("No partitions available").alignment(Alignment::Center);
         frame.render_widget(empty, inner);
         return;
     }
 
-    let items: Vec<ListItem> = partition_list
+    let partitions: Vec<ListItem> = app
+        .partition_list
         .partitions
         .iter()
-        .enumerate()
-        .map(|(idx, partition)| {
+        .map(|partition| {
             let state_color = match partition.state {
                 PartitionState::Up => Color::Green,
                 PartitionState::Down => Color::Red,
@@ -99,50 +70,43 @@ fn render_partition_list(
                 PartitionState::Unknown(_) => Color::Gray,
             };
 
-            let time_limit = partition.time_limit.as_deref().unwrap_or("--");
-            let node_count = partition.node_count;
-
-            let style = if idx == selected_index {
-                Style::new()
-                    .bg(theme.selected_bg)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-
             ListItem::new(Line::from(vec![
-                Span::styled(format!("{:<15} ", partition.display_name()), style),
-                Span::styled(format!("{:>5} ", partition.state), style.fg(state_color)),
-                Span::styled(format!("{:>6} nodes ", node_count), style),
-                Span::styled(format!("{:>10}", time_limit), style),
+                Span::styled(
+                    format!("{:<15} ", partition.display_name()),
+                    Style::default(),
+                ),
+                Span::styled(
+                    format!("{:>5} ", partition.state),
+                    Style::default().fg(state_color),
+                ),
             ]))
         })
         .collect();
 
-    let list = List::new(items).block(Block::default());
+    let list = List::new(partitions)
+        .block(Block::default())
+        .highlight_style(
+            Style::new()
+                .bg(app.theme.selected_bg)
+                .add_modifier(Modifier::BOLD),
+        );
 
     let mut state = ratatui::widgets::ListState::default();
-    state.select(Some(selected_index));
+    state.select(Some(app.selected_partition_index));
     frame.render_stateful_widget(list, inner, &mut state);
 }
 
-fn render_partition_details(
-    frame: &mut Frame,
-    partition_list: &PartitionList,
-    selected_index: usize,
-    is_focused: bool,
-    theme: &Theme,
-    area: Rect,
-) {
-    let focus_style = if is_focused {
-        Style::default().fg(theme.focused)
+fn render_partition_details(frame: &mut Frame, app: &mut App, area: Rect) {
+    let focus_style = if app.focused_panel == FocusedPanel::ClusterInfo {
+        Style::default().fg(app.theme.focused)
     } else {
-        Style::default().fg(theme.unfocused)
+        Style::default().fg(app.theme.unfocused)
     };
 
-    let partition_name = partition_list
+    let partition_name = app
+        .partition_list
         .partitions
-        .get(selected_index)
+        .get(app.selected_partition_index)
         .map(|p| p.name.clone())
         .unwrap_or_else(|| "Select a partition".to_string());
 
@@ -155,13 +119,16 @@ fn render_partition_details(
 
     let inner = area.inner(Margin::new(1, 1));
 
-    if partition_list.partitions.is_empty() {
+    if app.partition_list.partitions.is_empty() {
         let empty = Paragraph::new("No partition selected").alignment(Alignment::Center);
         frame.render_widget(empty, inner);
         return;
     }
 
-    let partition = partition_list.partitions.get(selected_index);
+    let partition = app
+        .partition_list
+        .partitions
+        .get(app.selected_partition_index);
     let text = match partition {
         Some(p) => format_partition_details(p),
         None => "Select a partition to view details".to_string(),
@@ -229,55 +196,6 @@ fn format_partition_details(partition: &Partition) -> String {
         if details.lln {
             lines.push("LLN: Yes (Least Loaded Node)".to_string());
         }
-    }
-
-    lines.join("\n")
-}
-
-fn render_user_limits(frame: &mut Frame, user_limits: &crate::models::UserLimits, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .title("User Limits (Fairshare):");
-    frame.render_widget(block, area);
-
-    let inner = area.inner(Margin::new(1, 1));
-
-    let text = format_user_limits(user_limits);
-    let limits = Paragraph::new(text).wrap(ratatui::widgets::Wrap { trim: true });
-    frame.render_widget(limits, inner);
-}
-
-fn format_user_limits(user_limits: &crate::models::UserLimits) -> String {
-    let mut lines = Vec::new();
-
-    if let Some(ref fairshare) = user_limits.fairshare {
-        lines.push(format!("Fairshare: {}", fairshare.display_fairshare()));
-        lines.push(format!(
-            "  Description: {}",
-            fairshare.fairshare_description()
-        ));
-        lines.push(format!("  Account: {}", fairshare.account));
-
-        if let Some(ref user) = fairshare.user {
-            lines.push(format!("  User: {}", user));
-        }
-
-        lines.push(String::new());
-        lines.push(format!(
-            "Shares: {} (norm: {:.6})",
-            fairshare.raw_shares, fairshare.norm_shares
-        ));
-        lines.push(format!(
-            "Usage: {} (eff: {:.6})",
-            fairshare.raw_usage, fairshare.effectv_usage
-        ));
-    } else if let Some(ref account) = user_limits.account {
-        lines.push(format!("Account: {}", account));
-        lines.push("Fairshare: Not available".to_string());
-    } else {
-        lines.push("User limits: Not available".to_string());
-        lines.push("(Run 'sshare' for details)".to_string());
     }
 
     lines.join("\n")

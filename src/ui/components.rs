@@ -107,32 +107,7 @@ fn render_cluster_main_view(frame: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(0), Constraint::Length(1)])
         .split(frame.area());
 
-    let title_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(
-            Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Length(1), Constraint::Min(0)])
-                .split(chunks[0])[1],
-        );
-
-    let title = Paragraph::new("Cluster Info").style(
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
-    );
-    frame.render_widget(title, title_chunks[0]);
-
-    cluster::render_cluster_view(
-        frame,
-        &app.partition_list,
-        &app.user_limits,
-        app.selected_partition_index,
-        app.cluster_panel.clone(),
-        &app.theme,
-        title_chunks[1],
-    );
+    cluster::render_cluster_view(frame, app, chunks[0]);
 
     render_help_bar(app.state, app.view_mode, app.main_view, frame, chunks[1]);
 }

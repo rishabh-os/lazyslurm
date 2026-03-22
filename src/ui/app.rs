@@ -24,7 +24,7 @@ impl Default for Theme {
     }
 }
 
-use crate::models::{Job, JobList, PartitionList, UserLimits};
+use crate::models::{Job, JobList, PartitionList};
 use crate::slurm::{SlurmCommands, SlurmParser};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -126,7 +126,6 @@ pub struct App {
     pub theme: Theme,
     pub main_view: MainView,
     pub partition_list: PartitionList,
-    pub user_limits: UserLimits,
     pub selected_partition_index: usize,
     pub cluster_panel: ClusterPanel,
     pub last_cluster_refresh: Instant,
@@ -167,7 +166,6 @@ impl App {
             theme: Theme::default(),
             main_view: MainView::Jobs,
             partition_list: PartitionList::new(),
-            user_limits: UserLimits::new(),
             selected_partition_index: 0,
             cluster_panel: ClusterPanel::PartitionList,
             last_cluster_refresh: Instant::now(),
@@ -518,9 +516,6 @@ impl App {
     async fn fetch_cluster_info(&mut self) -> Result<()> {
         let sinfo_output = SlurmCommands::sinfo().await?;
         self.partition_list = SlurmParser::parse_sinfo_output(&sinfo_output)?;
-
-        let sshare_output = SlurmCommands::sshare().await?;
-        self.user_limits = SlurmParser::parse_sshare_output(&sshare_output);
 
         if self.selected_partition_index >= self.partition_list.partitions.len() {
             self.selected_partition_index = self.partition_list.partitions.len().saturating_sub(1);

@@ -3,10 +3,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use regex::Regex;
 use std::collections::HashMap;
 
-use crate::models::{
-    FairshareInfo, Job, JobState, Partition, PartitionDetails, PartitionList, PartitionState,
-    UserLimits,
-};
+use crate::models::{Job, JobState, Partition, PartitionDetails, PartitionList, PartitionState};
 
 pub struct SlurmParser;
 
@@ -446,49 +443,5 @@ impl SlurmParser {
         } else {
             None
         }
-    }
-
-    pub fn parse_sshare_output(output: &str) -> UserLimits {
-        let mut user_limits = UserLimits::new();
-
-        for line in output.lines() {
-            if line.trim().is_empty() || line.starts_with("Account") || line.starts_with("=") {
-                continue;
-            }
-
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 7 {
-                let account = parts[0].trim().to_string();
-                let user: Option<String> = if parts[1].trim() == "root" {
-                    None
-                } else {
-                    Some(parts[1].trim().to_string())
-                };
-
-                let raw_shares: i64 = parts[2].trim().parse().unwrap_or(0);
-                let norm_shares: f64 = parts[3].trim().parse().unwrap_or(0.0);
-                let raw_usage: i64 = parts[4].trim().parse().unwrap_or(0);
-                let effectv_usage: f64 = parts[5].trim().parse().unwrap_or(0.0);
-                let fairshare: f64 = parts[6].trim().parse().unwrap_or(0.0);
-
-                if user.is_some() {
-                    user_limits.user = user.clone();
-                    user_limits.fairshare = Some(FairshareInfo {
-                        account: account.clone(),
-                        user,
-                        raw_shares,
-                        norm_shares,
-                        raw_usage,
-                        effectv_usage,
-                        fairshare,
-                    });
-                    break;
-                } else {
-                    user_limits.account = Some(account);
-                }
-            }
-        }
-
-        user_limits
     }
 }
