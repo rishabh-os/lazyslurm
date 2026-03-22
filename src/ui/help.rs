@@ -1,4 +1,4 @@
-use crate::ui::{AppState, ViewMode};
+use crate::ui::{AppState, MainView, ViewMode};
 
 #[derive(Debug, Clone, Copy)]
 pub struct HelpAction {
@@ -29,6 +29,8 @@ pub const CLOSE: HelpAction = HelpAction::new("esc", "close");
 pub const SUBMIT: HelpAction = HelpAction::new("Enter", "submit");
 pub const USER_SEARCH: HelpAction = HelpAction::new("u", "user filter");
 pub const PARTITION_SEARCH: HelpAction = HelpAction::new("p", "partition filter");
+pub const SWITCH_VIEW: HelpAction = HelpAction::new("j/i", "jobs/cluster");
+pub const CLUSTER_NAV: HelpAction = HelpAction::new("←→", "select panel");
 
 const BASE_NAV_ACTIONS: [&HelpAction; 8] = [
     &TAB,
@@ -41,6 +43,7 @@ const BASE_NAV_ACTIONS: [&HelpAction; 8] = [
     &QUIT,
 ];
 const BASE_POPUP_ACTIONS: [&HelpAction; 2] = [&CLOSE, &SUBMIT];
+const CLUSTER_ACTIONS: [&HelpAction; 5] = [&CLUSTER_NAV, &REFRESH, &SWITCH_VIEW, &TAB, &QUIT];
 const SEPARATOR: &str = " | ";
 
 pub fn format_actions(actions: &[&HelpAction]) -> String {
@@ -51,10 +54,14 @@ pub fn format_actions(actions: &[&HelpAction]) -> String {
         .join(SEPARATOR)
 }
 
-pub fn get_help_text(app_state: AppState, view_mode: ViewMode) -> String {
+pub fn get_help_text(app_state: AppState, view_mode: ViewMode, main_view: MainView) -> String {
     match app_state {
         AppState::Normal => {
+            if main_view == MainView::Cluster {
+                return format_actions(&CLUSTER_ACTIONS);
+            }
             let mut actions: Vec<&HelpAction> = BASE_NAV_ACTIONS.into();
+            actions.push(&SWITCH_VIEW);
             if view_mode == ViewMode::ActiveJobs {
                 actions.insert(actions.len() - 1, &CANCEL);
             }
@@ -75,6 +82,8 @@ pub const CLI_AFTER_HELP: &str = r#"Keyboard shortcuts:
   u: filter by user
   p: filter by partition
   c: cancel selected job
+  i: view cluster info (partitions/nodes)
+  j: view jobs
 
 Notes:
   - SLURM tools required for normal operation: squeue, scontrol, scancel, sacct.
@@ -96,7 +105,7 @@ mod tests {
 
     #[test]
     fn test_get_help_text_normal_active() {
-        let help = get_help_text(AppState::Normal, ViewMode::ActiveJobs);
+        let help = get_help_text(AppState::Normal, ViewMode::ActiveJobs, MainView::Jobs);
         assert!(help.contains("q: quit"));
         assert!(help.contains("c: cancel"));
         assert!(help.contains("user filter"));
@@ -105,7 +114,7 @@ mod tests {
 
     #[test]
     fn test_get_help_text_normal_history() {
-        let help = get_help_text(AppState::Normal, ViewMode::HistoryJobs);
+        let help = get_help_text(AppState::Normal, ViewMode::HistoryJobs, MainView::Jobs);
         assert!(help.contains("q: quit"));
         assert!(!help.contains("c: cancel"));
         assert!(help.contains("user filter"));
@@ -114,9 +123,21 @@ mod tests {
 
     #[test]
     fn test_get_help_text_cancel_popup() {
-        let help = get_help_text(AppState::CancelJobPopup, ViewMode::ActiveJobs);
+        let help = get_help_text(
+            AppState::CancelJobPopup,
+            ViewMode::ActiveJobs,
+            MainView::Jobs,
+        );
         assert_eq!(help, "y: confirm | n/esc: reject");
         assert_eq!(help, CONFIRM.format() + " | " + &REJECT.format());
+    }
+
+    #[test]
+    fn test_get_help_text_cluster() {
+        let help = get_help_text(AppState::Normal, ViewMode::ActiveJobs, MainView::Cluster);
+        assert!(help.contains("q: quit"));
+        assert!(help.contains("jobs/cluster"));
+        assert!(!help.contains("c: cancel"));
     }
 
     #[test]

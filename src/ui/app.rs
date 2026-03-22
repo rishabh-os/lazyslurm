@@ -5,6 +5,8 @@ use std::fmt;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
+use crate::ui::cluster::ClusterPanel;
+
 #[derive(Debug, Clone)]
 pub struct Theme {
     pub focused: Color,
@@ -22,13 +24,30 @@ impl Default for Theme {
     }
 }
 
-use crate::models::{Job, JobList};
+use crate::models::{Job, JobList, PartitionList, UserLimits};
 use crate::slurm::{SlurmCommands, SlurmParser};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FocusedPanel {
     JobList,
     LogView,
+    ClusterInfo,
+}
+
+impl FocusedPanel {
+    pub fn next(&mut self) {
+        *self = match self {
+            FocusedPanel::JobList => FocusedPanel::LogView,
+            FocusedPanel::LogView => FocusedPanel::JobList,
+            FocusedPanel::ClusterInfo => FocusedPanel::ClusterInfo,
+        };
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MainView {
+    Jobs,
+    Cluster,
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +124,13 @@ pub struct App {
     pub log_content_stdout: String,
     pub log_content_stderr: String,
     pub theme: Theme,
+    pub main_view: MainView,
+    pub partition_list: PartitionList,
+    pub user_limits: UserLimits,
+    pub selected_partition_index: usize,
+    pub cluster_panel: ClusterPanel,
+    pub last_cluster_refresh: Instant,
+    pub cluster_refresh_interval: Duration,
 }
 
 impl App {
@@ -139,6 +165,13 @@ impl App {
             log_content_stdout: String::new(),
             log_content_stderr: String::new(),
             theme: Theme::default(),
+            main_view: MainView::Jobs,
+            partition_list: PartitionList::new(),
+            user_limits: UserLimits::new(),
+            selected_partition_index: 0,
+            cluster_panel: ClusterPanel::PartitionList,
+            last_cluster_refresh: Instant::now(),
+            cluster_refresh_interval: Duration::from_secs(30),
         }
     }
 
@@ -192,6 +225,9 @@ impl App {
     }
 
     pub fn should_refresh(&self) -> bool {
+        if self.main_view == MainView::Cluster {
+            return self.should_refresh_cluster();
+        }
         match self.view_mode {
             ViewMode::ActiveJobs => self.last_refresh.elapsed() >= self.refresh_interval,
             ViewMode::HistoryJobs => {
@@ -201,6 +237,9 @@ impl App {
     }
 
     pub async fn refresh(&mut self) -> Result<()> {
+        if self.main_view == MainView::Cluster {
+            return self.refresh_cluster().await;
+        }
         match self.view_mode {
             ViewMode::ActiveJobs => self.refresh_jobs().await,
             ViewMode::HistoryJobs => self.refresh_history().await,
@@ -339,6 +378,7 @@ impl App {
         self.focused_panel = match self.focused_panel {
             FocusedPanel::JobList => FocusedPanel::LogView,
             FocusedPanel::LogView => FocusedPanel::JobList,
+            FocusedPanel::ClusterInfo => FocusedPanel::ClusterInfo,
         };
     }
 
@@ -427,6 +467,83 @@ impl App {
         } else {
             false
         }
+    }
+
+    pub fn toggle_main_view(&mut self) {
+        self.main_view = match self.main_view {
+            MainView::Jobs => MainView::Cluster,
+            MainView::Cluster => MainView::Jobs,
+        };
+        self.focused_panel = match self.main_view {
+            MainView::Jobs => FocusedPanel::JobList,
+            MainView::Cluster => FocusedPanel::ClusterInfo,
+        };
+    }
+
+    pub fn select_next_partition(&mut self) {
+        if !self.partition_list.partitions.is_empty()
+            && self.selected_partition_index < self.partition_list.partitions.len() - 1
+        {
+            self.selected_partition_index += 1;
+        }
+    }
+
+    pub fn select_previous_partition(&mut self) {
+        if self.selected_partition_index > 0 {
+            self.selected_partition_index -= 1;
+        }
+    }
+
+    pub fn should_refresh_cluster(&self) -> bool {
+        self.last_cluster_refresh.elapsed() >= self.cluster_refresh_interval
+    }
+
+    pub async fn refresh_cluster(&mut self) -> Result<()> {
+        self.is_loading = true;
+        self.error_message = None;
+
+        match self.fetch_cluster_info().await {
+            Ok(_) => {
+                self.last_cluster_refresh = Instant::now();
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Failed to fetch cluster info: {}", e));
+            }
+        }
+
+        self.is_loading = false;
+        Ok(())
+    }
+
+    async fn fetch_cluster_info(&mut self) -> Result<()> {
+        let sinfo_output = SlurmCommands::sinfo().await?;
+        self.partition_list = SlurmParser::parse_sinfo_output(&sinfo_output)?;
+
+        let sshare_output = SlurmCommands::sshare().await?;
+        self.user_limits = SlurmParser::parse_sshare_output(&sshare_output);
+
+        if self.selected_partition_index >= self.partition_list.partitions.len() {
+            self.selected_partition_index = self.partition_list.partitions.len().saturating_sub(1);
+        }
+
+        Ok(())
+    }
+
+    pub fn get_selected_partition(&self) -> Option<&crate::models::Partition> {
+        self.partition_list
+            .partitions
+            .get(self.selected_partition_index)
+    }
+
+    pub fn toggle_cluster_panel(&mut self) {
+        self.cluster_panel = match self.cluster_panel {
+            ClusterPanel::PartitionList => ClusterPanel::PartitionDetails,
+            ClusterPanel::PartitionDetails => ClusterPanel::PartitionList,
+        };
+    }
+
+    pub fn is_cluster_focused(&self) -> bool {
+        self.main_view == MainView::Cluster
     }
 }
 

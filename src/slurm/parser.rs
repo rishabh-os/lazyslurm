@@ -3,7 +3,10 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use regex::Regex;
 use std::collections::HashMap;
 
-use crate::models::{Job, JobState};
+use crate::models::{
+    FairshareInfo, Job, JobState, Partition, PartitionDetails, PartitionList, PartitionState,
+    UserLimits,
+};
 
 pub struct SlurmParser;
 
@@ -263,5 +266,229 @@ impl SlurmParser {
         }
 
         Ok(jobs)
+    }
+
+    pub fn parse_sinfo_output(output: &str) -> Result<PartitionList> {
+        let mut partitions: Vec<Partition> = Vec::new();
+        let mut seen_partitions: HashMap<String, usize> = HashMap::new();
+
+        for line in output.lines() {
+            if line.trim().is_empty() || line.starts_with("PARTITION") {
+                continue;
+            }
+
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 5 {
+                let name = parts[0].trim().to_string();
+                let state_str = parts[1].trim();
+                let time_limit = parts[2].trim().to_string();
+                let node_count: u32 = parts[3].trim().parse().unwrap_or(0);
+
+                let mut nodes: Vec<String> = Vec::new();
+                if parts.len() > 5 {
+                    let node_list_str = parts[5..].join(" ");
+                    nodes = Self::parse_node_list(&node_list_str);
+                }
+
+                let state = PartitionState::from(state_str);
+
+                if let Some(idx) = seen_partitions.get(&name) {
+                    partitions[*idx].node_count += node_count;
+                    partitions[*idx].nodes.extend(nodes);
+                } else {
+                    let partition = Partition::new(name.clone())
+                        .with_state(state)
+                        .with_time_limit(time_limit)
+                        .with_node_count(node_count)
+                        .with_nodes(nodes);
+                    let idx = partitions.len();
+                    seen_partitions.insert(name, idx);
+                    partitions.push(partition);
+                }
+            }
+        }
+
+        Ok(PartitionList { partitions })
+    }
+
+    fn parse_node_list(node_list_str: &str) -> Vec<String> {
+        let mut nodes = Vec::new();
+        let cleaned = node_list_str.trim();
+
+        if cleaned.is_empty() {
+            return nodes;
+        }
+
+        for part in cleaned.split(',') {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+
+            if part.contains('[') && part.contains("..") {
+                if let Some((prefix, range)) = part.split_once('[') {
+                    let range = range.trim_end_matches(']');
+                    if range.contains("..")
+                        && let Some((start_str, end_str)) = range.split_once("..")
+                        && let (Ok(start), Ok(end)) =
+                            (start_str.parse::<u32>(), end_str.parse::<u32>())
+                    {
+                        for i in start..=end {
+                            nodes.push(format!("{}{}", prefix, i));
+                        }
+                    }
+                }
+            } else if part.contains('[') {
+                if let Some((prefix, rest)) = part.split_once('[') {
+                    let items = rest.trim_end_matches(']');
+                    for item in items.split(',') {
+                        nodes.push(format!("{}{}", prefix, item.trim()));
+                    }
+                }
+            } else {
+                nodes.push(part.to_string());
+            }
+        }
+
+        nodes
+    }
+
+    pub fn parse_scontrol_partition_details(output: &str) -> Option<PartitionDetails> {
+        let mut details = PartitionDetails::default();
+
+        for line in output.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            let pairs: Vec<(&str, &str)> = line
+                .split_whitespace()
+                .filter_map(|s| {
+                    let mut iter = s.splitn(2, '=');
+                    match (iter.next(), iter.next()) {
+                        (Some(k), Some(v)) => Some((k, v)),
+                        _ => None,
+                    }
+                })
+                .collect();
+
+            for (key, value) in pairs {
+                match key {
+                    "PartitionName" => {
+                        details.node_list = vec![value.to_string()];
+                    }
+                    "MaxNodes" => {
+                        details.max_nodes = Some(value.to_string());
+                    }
+                    "MaxTime" => {
+                        details.max_time = Some(value.to_string());
+                    }
+                    "DefaultTime" => {
+                        details.default_time = Some(value.to_string());
+                    }
+                    "MinNodes" => {
+                        details.min_nodes = value.parse().unwrap_or(0);
+                    }
+                    "Nodes" => {
+                        details.nodes = Some(value.to_string());
+                    }
+                    "AllowAccounts" => {
+                        details.allow_accounts = Some(value.to_string());
+                    }
+                    "AllowQos" => {
+                        details.allow_qos = Some(value.to_string());
+                    }
+                    "DefaultQOS" => {
+                        details.default_qos = Some(value.to_string());
+                    }
+                    "MaxCPUsPerNode" => {
+                        details.max_cpus_per_node = Some(value.to_string());
+                    }
+                    "PriorityJobFactor" => {
+                        details.priority_job_factor = Some(value.to_string());
+                    }
+                    "PriorityTier" => {
+                        details.priority_tier = Some(value.to_string());
+                    }
+                    "State" => {
+                        details.state = Some(value.to_string());
+                    }
+                    "PreemptMode" => {
+                        details.preemption_mode = Some(value.to_string());
+                    }
+                    "GraceTime" => {
+                        details.grace_time = Some(value.to_string());
+                    }
+                    "Hidden" => {
+                        details.hidden = value.to_lowercase() == "yes";
+                    }
+                    "DisableRootJobs" => {
+                        details.disable_root_jobs = value.to_lowercase() == "yes";
+                    }
+                    "ExclusiveUser" => {
+                        details.exclusive_user = value.to_lowercase() == "yes";
+                    }
+                    "LLN" => {
+                        details.lln = value.to_lowercase() == "yes";
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if details.nodes.is_some()
+            || details.max_nodes.is_some()
+            || details.max_time.is_some()
+            || details.default_time.is_some()
+        {
+            Some(details)
+        } else {
+            None
+        }
+    }
+
+    pub fn parse_sshare_output(output: &str) -> UserLimits {
+        let mut user_limits = UserLimits::new();
+
+        for line in output.lines() {
+            if line.trim().is_empty() || line.starts_with("Account") || line.starts_with("=") {
+                continue;
+            }
+
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 7 {
+                let account = parts[0].trim().to_string();
+                let user: Option<String> = if parts[1].trim() == "root" {
+                    None
+                } else {
+                    Some(parts[1].trim().to_string())
+                };
+
+                let raw_shares: i64 = parts[2].trim().parse().unwrap_or(0);
+                let norm_shares: f64 = parts[3].trim().parse().unwrap_or(0.0);
+                let raw_usage: i64 = parts[4].trim().parse().unwrap_or(0);
+                let effectv_usage: f64 = parts[5].trim().parse().unwrap_or(0.0);
+                let fairshare: f64 = parts[6].trim().parse().unwrap_or(0.0);
+
+                if user.is_some() {
+                    user_limits.user = user.clone();
+                    user_limits.fairshare = Some(FairshareInfo {
+                        account: account.clone(),
+                        user,
+                        raw_shares,
+                        norm_shares,
+                        raw_usage,
+                        effectv_usage,
+                        fairshare,
+                    });
+                    break;
+                } else {
+                    user_limits.account = Some(account);
+                }
+            }
+        }
+
+        user_limits
     }
 }

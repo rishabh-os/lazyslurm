@@ -13,9 +13,9 @@ use ratatui::{
 use std::fs;
 
 use crate::slurm::SlurmParser;
-use crate::ui::{App, help};
+use crate::ui::{App, cluster, help};
 use crate::{
-    AppState, LogViewMode, ViewMode,
+    AppState, LogViewMode, MainView, ViewMode,
     models::{Job, JobState},
 };
 
@@ -41,42 +41,10 @@ fn render_text_popup(popup_text: String, app: &App, frame: &mut Frame) {
 }
 
 pub fn render_app(frame: &mut Frame, app: &mut App) {
-    // Create main layout
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),    // Main content
-            Constraint::Length(1), // Help/actions bar
-        ])
-        .split(frame.area());
-
-    // Main content area - split horizontally
-    let main_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(40), // Jobs list
-            Constraint::Percentage(60), // Details/logs
-        ])
-        .split(chunks[0]);
-
-    // Render jobs list
-    render_jobs_list(frame, app, main_chunks[0]);
-
-    // Right side - split vertically for details and logs
-    let right_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage(50), // Job details
-            Constraint::Percentage(50), // Job logs
-        ])
-        .split(main_chunks[1]);
-
-    // Render details and logs
-    render_job_details(frame, app, right_chunks[0]);
-    render_job_logs(frame, app, app.log_view_mode, right_chunks[1]);
-
-    // Render help bar
-    render_help_bar(app.state, app.view_mode, frame, chunks[1]);
+    match app.main_view {
+        MainView::Jobs => render_jobs_view(frame, app),
+        MainView::Cluster => render_cluster_main_view(frame, app),
+    }
 
     match app.state {
         AppState::UserSearchPopup => render_text_popup("Search User:".to_string(), app, frame),
@@ -107,6 +75,66 @@ pub fn render_app(frame: &mut Frame, app: &mut App) {
         }
         _ => {}
     }
+}
+
+fn render_jobs_view(frame: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(frame.area());
+
+    let main_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+        .split(chunks[0]);
+
+    render_jobs_list(frame, app, main_chunks[0]);
+
+    let right_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(main_chunks[1]);
+
+    render_job_details(frame, app, right_chunks[0]);
+    render_job_logs(frame, app, app.log_view_mode, right_chunks[1]);
+
+    render_help_bar(app.state, app.view_mode, app.main_view, frame, chunks[1]);
+}
+
+fn render_cluster_main_view(frame: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .split(frame.area());
+
+    let title_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(
+            Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(1), Constraint::Min(0)])
+                .split(chunks[0])[1],
+        );
+
+    let title = Paragraph::new("Cluster Info").style(
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    );
+    frame.render_widget(title, title_chunks[0]);
+
+    cluster::render_cluster_view(
+        frame,
+        &app.partition_list,
+        &app.user_limits,
+        app.selected_partition_index,
+        app.cluster_panel.clone(),
+        &app.theme,
+        title_chunks[1],
+    );
+
+    render_help_bar(app.state, app.view_mode, app.main_view, frame, chunks[1]);
 }
 
 fn render_jobs_list(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -287,8 +315,14 @@ fn render_job_logs(frame: &mut Frame, app: &mut App, log_view_mode: LogViewMode,
     }
 }
 
-fn render_help_bar(app_state: AppState, view_mode: ViewMode, frame: &mut Frame, area: Rect) {
-    let help_text = help::get_help_text(app_state, view_mode);
+fn render_help_bar(
+    app_state: AppState,
+    view_mode: ViewMode,
+    main_view: MainView,
+    frame: &mut Frame,
+    area: Rect,
+) {
+    let help_text = help::get_help_text(app_state, view_mode, main_view);
     let help = Paragraph::new(help_text)
         .block(Block::default())
         .style(Style::default().fg(Color::Blue));

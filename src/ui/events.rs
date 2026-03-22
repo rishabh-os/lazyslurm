@@ -1,4 +1,4 @@
-use crate::app::{App, AppState, ViewMode};
+use crate::app::{App, AppState, MainView, ViewMode};
 use crate::render_app;
 use ratatui::crossterm::event::{
     self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind,
@@ -75,20 +75,38 @@ async fn event_normal_state(app: &mut App, key: KeyEvent) -> Result<Option<()>, 
             return Ok(Some(()));
         }
         (KeyCode::Char('r'), _) => {
-            app.refresh().await?;
+            if app.main_view == MainView::Cluster {
+                app.refresh_cluster().await?;
+            } else {
+                app.refresh().await?;
+            }
         }
         (KeyCode::Tab, _) => {
-            app.toggle_focus();
+            if app.main_view == MainView::Cluster {
+                app.toggle_cluster_panel();
+            } else {
+                app.toggle_focus();
+            }
+        }
+        (KeyCode::Left, _) if app.main_view == MainView::Cluster => {
+            app.cluster_panel = crate::ui::ClusterPanel::PartitionList;
+        }
+        (KeyCode::Right, _) if app.main_view == MainView::Cluster => {
+            app.cluster_panel = crate::ui::ClusterPanel::PartitionDetails;
         }
         (KeyCode::Up, _) => {
-            if app.is_log_focused() {
+            if app.main_view == MainView::Cluster {
+                app.select_previous_partition();
+            } else if app.is_log_focused() {
                 app.scroll_log_up();
             } else {
                 app.select_previous_job();
             }
         }
         (KeyCode::Down, _) => {
-            if app.is_log_focused() {
+            if app.main_view == MainView::Cluster {
+                app.select_next_partition();
+            } else if app.is_log_focused() {
                 let max_offset = app.current_log_content().lines().count().saturating_sub(1);
                 app.scroll_log_down(max_offset);
             } else {
@@ -96,18 +114,26 @@ async fn event_normal_state(app: &mut App, key: KeyEvent) -> Result<Option<()>, 
             }
         }
         (KeyCode::PageUp, _) => {
-            app.scroll_log_page_up();
+            if app.main_view != MainView::Cluster {
+                app.scroll_log_page_up();
+            }
         }
         (KeyCode::PageDown, _) => {
-            let max_offset = app.current_log_content().lines().count().saturating_sub(1);
-            app.scroll_log_page_down(max_offset);
+            if app.main_view != MainView::Cluster {
+                let max_offset = app.current_log_content().lines().count().saturating_sub(1);
+                app.scroll_log_page_down(max_offset);
+            }
         }
         (KeyCode::Home, _) => {
-            app.scroll_log_to_start();
+            if app.main_view != MainView::Cluster {
+                app.scroll_log_to_start();
+            }
         }
         (KeyCode::End, _) => {
-            let max_offset = app.current_log_content().lines().count().saturating_sub(1);
-            app.scroll_log_to_end(max_offset);
+            if app.main_view != MainView::Cluster {
+                let max_offset = app.current_log_content().lines().count().saturating_sub(1);
+                app.scroll_log_to_end(max_offset);
+            }
         }
         (KeyCode::Char('u'), _) => {
             app.state = AppState::UserSearchPopup;
@@ -115,9 +141,22 @@ async fn event_normal_state(app: &mut App, key: KeyEvent) -> Result<Option<()>, 
         (KeyCode::Char('p'), _) => {
             app.state = AppState::PartitionSearchPopup;
         }
-        (KeyCode::Char('h'), _) => {
+        (KeyCode::Char('h'), _) if app.main_view != MainView::Cluster => {
             app.toggle_view_mode();
             app.refresh().await?;
+        }
+        (KeyCode::Char('j'), _) | (KeyCode::Char('J'), _) => {
+            if app.main_view != MainView::Jobs {
+                app.main_view = MainView::Jobs;
+                app.focused_panel = crate::ui::FocusedPanel::JobList;
+            }
+        }
+        (KeyCode::Char('i'), _) | (KeyCode::Char('I'), _) => {
+            if app.main_view != MainView::Cluster {
+                app.main_view = MainView::Cluster;
+                app.focused_panel = crate::ui::FocusedPanel::ClusterInfo;
+                app.refresh_cluster().await?;
+            }
         }
         (KeyCode::Char('c'), _)
             if app.selected_job.is_some() && app.view_mode == ViewMode::ActiveJobs =>

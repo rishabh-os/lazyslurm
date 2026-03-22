@@ -92,4 +92,74 @@ impl SlurmCommands {
             .map(|output| output.status.success())
             .unwrap_or(false)
     }
+
+    pub async fn sinfo() -> Result<String> {
+        let output = TokioCommand::new("sinfo")
+            .arg("-a")
+            .arg("-o")
+            .arg("%P %.5a %.10l %.6D %.6t %N")
+            .output()
+            .await
+            .context("Failed to execute sinfo")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("sinfo failed: {}", stderr);
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    pub async fn scontrol_show_partitions() -> Result<String> {
+        let output = TokioCommand::new("scontrol")
+            .arg("show")
+            .arg("partitions")
+            .output()
+            .await
+            .context("Failed to execute scontrol show partitions")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("scontrol show partitions failed: {}", stderr);
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    pub async fn scontrol_show_partition(partition_name: &str) -> Result<String> {
+        let output = TokioCommand::new("scontrol")
+            .arg("show")
+            .arg("partition")
+            .arg(partition_name)
+            .output()
+            .await
+            .context("Failed to execute scontrol show partition")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!(
+                "scontrol show partition {} failed: {}",
+                partition_name,
+                stderr
+            );
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    pub async fn sshare() -> Result<String> {
+        let output = TokioCommand::new("sshare")
+            .arg("-a")
+            .arg("-l")
+            .output()
+            .await
+            .context("Failed to execute sshare")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("sshare failed: {}", stderr);
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
 }
