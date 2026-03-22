@@ -10,7 +10,7 @@ use ratatui::{
 use crate::ui::App;
 use crate::{
     FocusedPanel,
-    models::{Partition, PartitionList, PartitionState},
+    models::{Partition, PartitionAvail, PartitionList},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,11 +63,11 @@ fn render_partition_list(app: &mut App, frame: &mut Frame, area: Rect) {
         .iter()
         .map(|partition| {
             let state_color = match partition.state {
-                PartitionState::Up => Color::Green,
-                PartitionState::Down => Color::Red,
-                PartitionState::Drain => Color::Yellow,
-                PartitionState::Inactive => Color::DarkGray,
-                PartitionState::Unknown(_) => Color::Gray,
+                PartitionAvail::Up => Color::Green,
+                PartitionAvail::Down => Color::Red,
+                PartitionAvail::Drain => Color::Yellow,
+                PartitionAvail::Inactive => Color::DarkGray,
+                PartitionAvail::Unknown(_) => Color::Gray,
             };
 
             ListItem::new(Line::from(vec![
@@ -76,7 +76,7 @@ fn render_partition_list(app: &mut App, frame: &mut Frame, area: Rect) {
                     Style::default(),
                 ),
                 Span::styled(
-                    format!("{:>5} ", partition.state),
+                    format!("{:?} ", partition.state),
                     Style::default().fg(state_color),
                 ),
             ]))
@@ -142,7 +142,7 @@ fn format_partition_details(partition: &Partition) -> String {
     let mut lines = Vec::new();
 
     lines.push(format!("Name: {}", partition.name));
-    lines.push(format!("State: {}", partition.state));
+    lines.push(format!("State: {:?}", partition.state));
 
     if let Some(ref time_limit) = partition.time_limit {
         lines.push(format!("Time Limit: {}", time_limit));

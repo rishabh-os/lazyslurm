@@ -41,6 +41,8 @@ anyhow = "1.0"
 # Regex for parsing
 regex = "1.12"
 
+# Static data
+strum = { version = "0.28", features = ["derive"] }
 [profile.dev]
 opt-level = 0
 debug = true

@@ -95,9 +95,6 @@ impl SlurmCommands {
 
     pub async fn sinfo() -> Result<String> {
         let output = TokioCommand::new("sinfo")
-            .arg("-a")
-            .arg("-o")
-            .arg("%P %.5a %.10l %.6D %.6t %N")
             .output()
             .await
             .context("Failed to execute sinfo")?;

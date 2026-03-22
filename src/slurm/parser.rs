@@ -3,7 +3,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use regex::Regex;
 use std::collections::HashMap;
 
-use crate::models::{Job, JobState, Partition, PartitionDetails, PartitionList, PartitionState};
+use crate::models::{Job, JobState, Partition, PartitionAvail, PartitionDetails, PartitionList};
 
 pub struct SlurmParser;
 
@@ -277,7 +277,7 @@ impl SlurmParser {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 5 {
                 let name = parts[0].trim().to_string();
-                let state_str = parts[1].trim();
+                let avail = PartitionAvail::from(parts[1].trim());
                 let time_limit = parts[2].trim().to_string();
                 let node_count: u32 = parts[3].trim().parse().unwrap_or(0);
 
@@ -287,14 +287,12 @@ impl SlurmParser {
                     nodes = Self::parse_node_list(&node_list_str);
                 }
 
-                let state = PartitionState::from(state_str);
-
                 if let Some(idx) = seen_partitions.get(&name) {
                     partitions[*idx].node_count += node_count;
                     partitions[*idx].nodes.extend(nodes);
                 } else {
                     let partition = Partition::new(name.clone())
-                        .with_state(state)
+                        .with_state(avail)
                         .with_time_limit(time_limit)
                         .with_node_count(node_count)
                         .with_nodes(nodes);

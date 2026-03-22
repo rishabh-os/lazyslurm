@@ -1,42 +1,20 @@
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use strum::EnumString;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum PartitionState {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum PartitionAvail {
     Up,
     Down,
     Drain,
     Inactive,
+    #[strum(default)]
     Unknown(String),
 }
 
-impl fmt::Display for PartitionState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PartitionState::Up => write!(f, "up"),
-            PartitionState::Down => write!(f, "down"),
-            PartitionState::Drain => write!(f, "drain"),
-            PartitionState::Inactive => write!(f, "inact"),
-            PartitionState::Unknown(s) => write!(f, "{}", s),
-        }
-    }
-}
-
-impl From<&str> for PartitionState {
-    fn from(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "up" => PartitionState::Up,
-            "down" => PartitionState::Down,
-            "drain" => PartitionState::Drain,
-            "inact" | "inactive" => PartitionState::Inactive,
-            _ => PartitionState::Unknown(s.to_string()),
-        }
-    }
-}
-
-impl PartitionState {
+impl PartitionAvail {
     pub fn is_available(&self) -> bool {
-        matches!(self, PartitionState::Up)
+        matches!(self, PartitionAvail::Up)
     }
 }
 
@@ -50,7 +28,7 @@ pub struct NodeInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Partition {
     pub name: String,
-    pub state: PartitionState,
+    pub state: PartitionAvail,
     pub time_limit: Option<String>,
     pub node_count: u32,
     pub nodes: Vec<String>,
@@ -84,7 +62,7 @@ impl Partition {
     pub fn new(name: String) -> Self {
         Self {
             name,
-            state: PartitionState::Unknown(String::new()),
+            state: PartitionAvail::Unknown(String::new()),
             time_limit: None,
             node_count: 0,
             nodes: Vec::new(),
@@ -92,7 +70,7 @@ impl Partition {
         }
     }
 
-    pub fn with_state(mut self, state: PartitionState) -> Self {
+    pub fn with_state(mut self, state: PartitionAvail) -> Self {
         self.state = state;
         self
     }
